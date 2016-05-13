@@ -4,6 +4,8 @@ var subdown = require('subleveldown/leveldown')
 var abstract = require('abstract-leveldown')
 var pump = require('pump')
 var encoding = require('./encoding')
+var decoder = require('./decoder')
+var encoder = require('./encoder')
 var defaultIndexer = function (batch, cb) {
   cb(null, batch)
 }
@@ -51,11 +53,31 @@ var toBuffer = function(val) {
 ChangesDOWN.prototype._open = function(options, cb) {
   var self = this
   var changes = this.changes
+  var decodeKey = decoder(options.keyEncoding)
+  var decodeValue = decoder(options.valueEncoding)
+  var encodeKey = encoder(options.keyEncoding)
+  var encodeValue = encoder(options.valueEncoding)
+  var hasCustomIndexer = self.indexer !== defaultIndexer
+  var decodeRow = function (row) {
+    return {
+      type: row.type,
+      key: decodeKey(row.key),
+      value: decodeValue(row.value)
+    }
+  }
+
+  var encodeRow = function (row) {
+    return {
+      type: row.type,
+      key: encodeKey(row.key),
+      value: encodeValue(row.value)
+    }
+  }
 
   var index = function(data, enc, cb) {
     self.change = data.change
 
-    var value = encoding.decode(data.value)
+    var op = encoding.decode(data.value)
 
     var predone = function(err) {
       if (err) return done(err)
@@ -69,10 +91,21 @@ ChangesDOWN.prototype._open = function(options, cb) {
       cb(err)
     }
 
-    self.indexer(opToBatch(value), function (err, batch) {
-      if (err || !(batch && batch.length)) return predone(err)
+    var inBatch = opToBatch(op)
+    if (hasCustomIndexer) {
+      // skip encode/decode step
+      inBatch = inBatch.map(decodeRow)
+    }
 
-      self.leveldown.batch(batch, predone)
+    self.indexer(inBatch, function (err, outBatch) {
+      if (err || !(outBatch && outBatch.length)) return predone(err)
+
+      if (hasCustomIndexer) {
+        // skip encode/decode step
+        outBatch = outBatch.map(encodeRow)
+      }
+
+      self.leveldown.batch(outBatch, predone)
     })
   }
 

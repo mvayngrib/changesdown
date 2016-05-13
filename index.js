@@ -4,26 +4,7 @@ var through = require('through2')
 var pump = require('pump')
 var levelup = require('levelup')
 var encoding = require('./encoding')
-
-var decoder = function (name) {
-  switch (name) {
-    case 'binary':
-    return function (val) {
-      return val
-    }
-
-    case 'utf-8':
-    case 'utf8':
-    return function (val) {
-      return val.toString()
-    }
-
-    case 'json':
-    return function (val) {
-      return JSON.parse(val.toString())
-    }
-  }
-}
+var decoder = require('./decoder')
 
 module.exports = function(db, cOpts, opts) {
   // backwards compatibility
@@ -34,6 +15,9 @@ module.exports = function(db, cOpts, opts) {
   opts.db = function(location) {
     return changesdown(location, cOpts, db)
   }
+
+  if (!opts.keyEncoding) opts.keyEncoding = 'binary'
+  if (!opts.valueEncoding) opts.valueEncoding = 'binary'
 
   var result = levelup(db.location || 'no-location', opts)
 

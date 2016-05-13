@@ -65,20 +65,23 @@ tape('custom indexer', function (t) {
   var db = changesdown(memdb(), {
     changes: feed,
     indexer: indexLikes
+  },
+  {
+    valueEncoding: 'json'
   })
 
   db.batch([{
     type: 'put',
     key: 'alice',
-    value: toBuffer({
+    value: {
       hates: 'beer'
-    })
+    }
   }, {
     type: 'put',
     key: 'bob',
-    value: toBuffer({
+    value: {
       likes: 'people'
-    })
+    }
   }], function(err) {
     if (err) throw err
 
@@ -86,7 +89,7 @@ tape('custom indexer', function (t) {
     db.createValueStream()
       .on('data', data.push.bind(data))
       .on('end', function () {
-        t.same(data, [new Buffer('people')])
+        t.same(data, [{likes: 'people'}])
         t.end()
       })
   })
@@ -94,14 +97,7 @@ tape('custom indexer', function (t) {
   function indexLikes (batch, cb) {
     var vBatch = batch
       .map(function (subOp) {
-        var value = JSON.parse(subOp.value)
-        if (!value.likes) return
-
-        return {
-          type: subOp.type,
-          key: subOp.key,
-          value: new Buffer(value.likes)
-        }
+        if (subOp.value.likes) return subOp
       })
       .filter(function (op) {
         return !!op
@@ -110,7 +106,3 @@ tape('custom indexer', function (t) {
     cb(null, vBatch)
   }
 })
-
-function toBuffer (obj) {
-  return new Buffer(JSON.stringify(obj))
-}
